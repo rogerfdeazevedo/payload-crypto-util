@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Criptografia RSA com JSEncrypt</title>
+  <script src="https://cdn.jsdelivr.net/npm/jsencrypt@3.3.2/bin/jsencrypt.min.js"></script>
+  <style>
+    textarea { width: 100%; min-height: 80px; }
+    label { font-weight: bold; }
+    #copyBtn {
+      margin-top: 5px;
+      padding: 5px 10px;
+      font-size: 1em;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h2>Criptografar Payload</h2>
+  <label for="publicKey">Chave Pública (PEM):</label><br>
+  <textarea id="publicKey" placeholder="Cole aqui a chave pública PEM...">-----BEGIN PUBLIC KEY-----
+<cole_aqui>
+-----END PUBLIC KEY-----</textarea>
+  <br><br>
+  <label for="payload">Payload JSON:</label><br>
+  <textarea id="payload">{ "campo": "valor"}</textarea>
+  <br><br>
+  <button onclick="criptografarPayload()">Criptografar</button>
+  <h3>Resultado (Base64):</h3>
+  <textarea id="resultado" readonly></textarea>
+  <br>
+  <button id="copyBtn" onclick="copiarResultado()" style="display:none;">Copiar Resultado</button>
+
+  <script>
+    function criptografarPayload() {
+      var publicKey = document.getElementById('publicKey').value.trim();
+      var payloadStr = document.getElementById('payload').value.trim();
+      let resultado = document.getElementById('resultado');
+      let copyBtn = document.getElementById('copyBtn');
+      resultado.value = '';
+      copyBtn.style.display = 'none';
+
+      // Validação básica
+      if (!publicKey.startsWith('-----BEGIN PUBLIC KEY-----')) {
+        resultado.value = "Chave pública inválida!";
+        return;
+      }
+
+      try {
+        // Valida se o payload é JSON válido
+        JSON.parse(payloadStr);
+      } catch (e) {
+        resultado.value = "Payload JSON inválido!";
+        return;
+      }
+
+      var encrypt = new JSEncrypt();
+      encrypt.setPublicKey(publicKey);
+      var encrypted = encrypt.encrypt(payloadStr);
+
+      if (encrypted) {
+        resultado.value = encrypted;
+        copyBtn.style.display = 'inline-block';
+      } else {
+        resultado.value = "Erro ao criptografar!";
+        copyBtn.style.display = 'none';
+      }
+    }
+
+    function copiarResultado() {
+      var resultado = document.getElementById('resultado');
+      if (!resultado.value) return;
+      resultado.select();
+      resultado.setSelectionRange(0, 99999); // Para dispositivos móveis
+      navigator.clipboard.writeText(resultado.value).then(function() {
+        var btn = document.getElementById('copyBtn');
+        btn.textContent = 'Copiado!';
+        setTimeout(function() {
+          btn.textContent = 'Copiar Resultado';
+        }, 1500);
+      });
+    }
+  </script>
+</body>
+</html>
