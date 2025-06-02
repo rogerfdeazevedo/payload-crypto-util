@@ -7,11 +7,38 @@
   <style>
     textarea { width: 100%; min-height: 80px; }
     label { font-weight: bold; }
-    #copyBtn {
+    #copyBtn, #clearBtn {
       margin-top: 5px;
       padding: 5px 10px;
       font-size: 1em;
       cursor: pointer;
+    }
+    #payloadSize {
+      font-size: 0.95em;
+      color: #555;
+      margin-bottom: 10px;
+      display: block;
+    }
+    .error-message {
+      color: #fff;
+      background: #d32f2f;
+      padding: 8px 12px;
+      border-radius: 4px;
+      margin: 10px 0 0 0;
+      font-weight: bold;
+      display: inline-block;
+    }
+    .success-message {
+      color: #fff;
+      background: #388e3c;
+      padding: 8px 12px;
+      border-radius: 4px;
+      margin: 10px 0 0 0;
+      font-weight: bold;
+      display: inline-block;
+    }
+    .btn-group {
+      margin-bottom: 10px;
     }
   </style>
 </head>
@@ -21,17 +48,69 @@
   <textarea id="publicKey" placeholder="Cole aqui a chave pública PEM...">-----BEGIN PUBLIC KEY-----
 <cole_aqui>
 -----END PUBLIC KEY-----</textarea>
+  <div class="btn-group">
+    <button id="clearBtn" onclick="limparChavePublica()">Limpar Chave Pública (PEM)</button>
+  </div>
   <br><br>
   <label for="payload">Payload JSON:</label><br>
-  <textarea id="payload">{ "campo": "valor"}</textarea>
-  <br><br>
-  <button onclick="criptografarPayload()">Criptografar</button>
+  <textarea id="payload" oninput="atualizarTamanhoPayload()">{ "campo": "valor"}</textarea>
+  <span id="payloadSize"></span>
+  <div class="btn-group">
+    <button id="clearBtn" onclick="criptografarPayload()">Criptografar</button>
+	<button id="clearBtn" onclick="limparCampos()">Limpar Payload JSON e Resultado (Base64)</button>
+  </div>
+  <div id="mensagem"></div>
   <h3>Resultado (Base64):</h3>
   <textarea id="resultado" readonly></textarea>
   <br>
   <button id="copyBtn" onclick="copiarResultado()" style="display:none;">Copiar Resultado</button>
-
+  <div class="btn-group">
+    <button id="clearBtn" onclick="limparTudo()">Limpar Tudo</button>
+  </div>
   <script>
+    // Limite de bytes para RSA 2048 bits com PKCS#1 v1.5
+    const RSA_PAYLOAD_LIMIT = 245;
+
+    function getUtf8Bytes(str) {
+      return new TextEncoder().encode(str).length;
+    }
+
+    function atualizarTamanhoPayload() {
+      const payloadStr = document.getElementById('payload').value.trim();
+      const size = getUtf8Bytes(payloadStr);
+      const sizeSpan = document.getElementById('payloadSize');
+      sizeSpan.textContent = `Tamanho do payload: ${size} bytes (limite RSA: ${RSA_PAYLOAD_LIMIT} bytes)`;
+      if (size > RSA_PAYLOAD_LIMIT) {
+        sizeSpan.style.color = 'red';
+      } else {
+        sizeSpan.style.color = '#555';
+      }
+    }
+
+    function isValidPublicKeyPEM(pem) {
+      pem = pem.trim();
+      const pemRegex = /^-----BEGIN PUBLIC KEY-----\s*([\s\S]+?)\s*-----END PUBLIC KEY-----$/;
+      const match = pem.match(pemRegex);
+      if (!match) return false;
+      const base64Content = match[1].replace(/\s+/g, '');
+      if (!base64Content || !/^[A-Za-z0-9+/=]+$/.test(base64Content)) return false;
+      try {
+        atob(base64Content);
+      } catch (e) {
+        return false;
+      }
+      return true;
+    }
+
+    function mostrarMensagem(msg, tipo) {
+      const div = document.getElementById('mensagem');
+      div.innerHTML = `<span class="${tipo}-message">${msg}</span>`;
+    }
+
+    function limparMensagem() {
+      document.getElementById('mensagem').innerHTML = '';
+    }
+
     function criptografarPayload() {
       var publicKey = document.getElementById('publicKey').value.trim();
       var payloadStr = document.getElementById('payload').value.trim();
@@ -39,18 +118,26 @@
       let copyBtn = document.getElementById('copyBtn');
       resultado.value = '';
       copyBtn.style.display = 'none';
+      limparMensagem();
 
-      // Validação básica
-      if (!publicKey.startsWith('-----BEGIN PUBLIC KEY-----')) {
-        resultado.value = "Chave pública inválida!";
+      // Validação robusta da chave pública
+      if (!isValidPublicKeyPEM(publicKey)) {
+        mostrarMensagem("Erro: Chave pública inválida! Certifique-se de que está no formato PEM correto.", "error");
         return;
       }
 
+      // Validação do JSON
       try {
-        // Valida se o payload é JSON válido
         JSON.parse(payloadStr);
       } catch (e) {
-        resultado.value = "Payload JSON inválido!";
+        mostrarMensagem("Erro: Payload JSON inválido! Verifique a sintaxe do JSON.", "error");
+        return;
+      }
+
+      // Validação do tamanho do payload
+      const payloadBytes = getUtf8Bytes(payloadStr);
+      if (payloadBytes > RSA_PAYLOAD_LIMIT) {
+        mostrarMensagem(`Erro: Payload excede o limite de ${RSA_PAYLOAD_LIMIT} bytes para criptografia RSA direta. Utilize criptografia híbrida (AES + RSA) para payloads maiores.`, "error");
         return;
       }
 
@@ -61,8 +148,9 @@
       if (encrypted) {
         resultado.value = encrypted;
         copyBtn.style.display = 'inline-block';
+        mostrarMensagem("Payload criptografado com sucesso!", "success");
       } else {
-        resultado.value = "Erro ao criptografar!";
+        mostrarMensagem("Erro interno ao criptografar! Verifique a chave pública e tente novamente.", "error");
         copyBtn.style.display = 'none';
       }
     }
@@ -80,6 +168,25 @@
         }, 1500);
       });
     }
+	
+	function limparChavePublica(){
+	  document.getElementById('publicKey').value = '-----BEGIN PUBLIC KEY-----\n<cole_aqui>\n-----END PUBLIC KEY-----';
+	}
+
+    function limparCampos() {
+      document.getElementById('payload').value = '{ "campo": "valor"}';
+      document.getElementById('resultado').value = '';
+      document.getElementById('copyBtn').style.display = 'none';
+      limparMensagem();
+      atualizarTamanhoPayload();
+    }
+	
+	function limparTudo() {
+	 limparChavePublica();
+	 limparCampos();
+	}
+
+    window.onload = atualizarTamanhoPayload;
   </script>
 </body>
 </html>
